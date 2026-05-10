@@ -239,22 +239,31 @@ def add_reply(id):
 @admin_required
 def admin_panel():
     users = User.query.all()
+    current_user = User.query.get(session.get('user_id'))
     
     if request.method == 'POST':
         user_id = request.form.get('user_id')
         action = request.form.get('action')
         user = User.query.get(user_id)
         
-        if user and user.id != session.get('user_id'):  # Нельзя изменить себя
+        # ЗАЩИТА: нельзя изменять владельца
+        if user and user.is_owner:
+            flash('❌ Нельзя изменять права владельца!', 'error')
+            return redirect(url_for('admin_panel'))
+        
+        # Нельзя изменять самого себя
+        if user and user.id == session.get('user_id'):
+            flash('❌ Нельзя изменить свои права', 'error')
+            return redirect(url_for('admin_panel'))
+        
+        if user:
             if action == 'make_admin':
                 user.is_admin = True
-                flash(f'Права администратора выданы пользователю {user.username}', 'success')
+                flash(f'✅ Права администратора выданы {user.username}', 'success')
             elif action == 'remove_admin':
                 user.is_admin = False
-                flash(f'Права администратора забраны у {user.username}', 'success')
+                flash(f'❌ Права администратора забраны у {user.username}', 'success')
             db.session.commit()
-        elif user and user.id == session.get('user_id'):
-            flash('Нельзя изменить свои права', 'error')
         return redirect(url_for('admin_panel'))
     
     return render_template('admin_panel.html', users=users, current_user_id=session.get('user_id'))
