@@ -259,4 +259,6 @@ def admin_panel():
     return render_template('admin_panel.html', users=users, current_user_id=session.get('user_id'))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True)
+
+application = app
