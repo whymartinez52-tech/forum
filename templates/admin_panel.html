@@ -69,3 +69,21 @@
     </div>
 </body>
 </html>
+
+{% if not user.is_owner and user.id != current_user_id %}
+    {% if not user.is_admin %}
+        <form method="POST" style="display: inline;">
+            <input type="hidden" name="user_id" value="{{ user.id }}">
+            <input type="hidden" name="action" value="make_admin">
+            <button type="submit" class="btn btn-primary">👑 Выдать права</button>
+        </form>
+    {% else %}
+        <form method="POST" style="display: inline;">
+            <input type="hidden" name="user_id" value="{{ user.id }}">
+            <input type="hidden" name="action" value="remove_admin">
+            <button type="submit" class="btn btn-danger">🔻 Забрать права</button>
+        </form>
+    {% endif %}
+{% elif user.is_owner %}
+    <span style="color:#f97316;">👑 Владелец (нельзя изменить)</span>
+{% endif %}
