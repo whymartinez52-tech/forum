@@ -1,18 +1,15 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from functools import wraps
-
 import os
-# Удаляем старую базу данных при запуске
-db_path = '/tmp/forum.db'
-if os.path.exists(db_path):
-    os.remove(db_path)
-    print("✅ Старая БД удалена!")
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-12345'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///forum.db'
+
+# База данных
+db_path = '/tmp/forum.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -22,7 +19,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-    is_owner = db.Column(db.Boolean, default=False) 
+    is_owner = db.Column(db.Boolean, default=False)  # ← Защита владельца
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Complaint(db.Model):
@@ -38,7 +35,7 @@ class Complaint(db.Model):
     moderator_reply = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# ========== ДЕКОРАТОР ДЛЯ АДМИНОВ ==========
+# ========== ДЕКОРАТОРЫ ==========
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -57,17 +54,26 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# ========== СОЗДАНИЕ ТАБЛИЦ ==========
+# ========== СОЗДАНИЕ ТАБЛИЦ И ВЛАДЕЛЬЦА ==========
 with app.app_context():
     db.create_all()
-    # Создаём владельца (его нельзя лишить прав)
-    if User.query.count() == 0:
+    
+    # Создаём владельца (админа, которого нельзя лишить прав)
+    owner = User.query.filter_by(username='admin').first()
+    if not owner:
         owner = User(username='admin', password='admin123', is_admin=True, is_owner=True)
         db.session.add(owner)
         db.session.commit()
-        print("✅ Владелец создан: admin / admin123")
+        print("✅ Создан владелец: admin / admin123")
+    else:
+        # Если admin уже есть, но не owner — делаем owner
+        if not owner.is_owner:
+            owner.is_owner = True
+            owner.is_admin = True
+            db.session.commit()
+            print("✅ Пользователь admin назначен владельцем")
 
-# ========== АВТОРИЗАЦИЯ ==========
+# ========== МАРШРУТЫ ==========
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('user_id'):
@@ -109,7 +115,7 @@ def register():
             flash('Пользователь с таким именем уже существует', 'error')
             return redirect(url_for('register'))
         
-        new_user = User(username=username, password=password, is_admin=False)
+        new_user = User(username=username, password=password, is_admin=False, is_owner=False)
         db.session.add(new_user)
         db.session.commit()
         flash('Регистрация успешна! Теперь войдите.', 'success')
@@ -122,7 +128,6 @@ def logout():
     flash('Вы вышли из аккаунта', 'success')
     return redirect(url_for('login'))
 
-# ========== ОСНОВНЫЕ СТРАНИЦЫ ==========
 @app.route('/')
 @login_required
 def index():
@@ -132,6 +137,11 @@ def index():
 @login_required
 def rules():
     return render_template('rules.html')
+
+@app.route('/faq')
+@login_required
+def faq():
+    return render_template('faq.html')
 
 @app.route('/complaints', methods=['GET', 'POST'])
 @login_required
@@ -170,17 +180,27 @@ def view_complaint(id):
     complaint = Complaint.query.get_or_404(id)
     return render_template('complaint.html', complaint=complaint, is_admin=session.get('is_admin'))
 
-@app.route('/faq')
+@app.route('/complaint/<int:id>/reply', methods=['POST'])
 @login_required
-def faq():
-    return render_template('faq.html')
+def add_reply(id):
+    complaint = Complaint.query.get_or_404(id)
+    
+    if complaint.status == 'Решено':
+        flash('❌ Жалоба решена, ответы запрещены!', 'error')
+        return redirect(url_for('view_complaint', id=id))
+    
+    reply_text = request.form.get('reply_text')
+    if reply_text:
+        complaint.moderator_reply = reply_text
+        db.session.commit()
+        flash('✅ Ответ добавлен!', 'success')
+    return redirect(url_for('view_complaint', id=id))
 
-# ========== МОДЕРАЦИЯ (ДЛЯ АДМИНОВ) ==========
+# ========== МОДЕРАЦИЯ (ТОЛЬКО ДЛЯ АДМИНОВ) ==========
 @app.route('/moderation', methods=['GET', 'POST'])
 @admin_required
 def moderation():
     complaints_list = Complaint.query.order_by(Complaint.created_at.desc()).all()
-    users = User.query.all()
     
     if request.method == 'POST':
         complaint_id = request.form.get('id')
@@ -203,7 +223,7 @@ def moderation():
             flash('Изменения применены.', 'success')
         return redirect(url_for('moderation'))
     
-    return render_template('moderation.html', complaints=complaints_list, users=users, is_admin=True)
+    return render_template('moderation.html', complaints=complaints_list, is_admin=True)
 
 @app.route('/complaint/<int:id>/rename', methods=['POST'])
 @admin_required
@@ -225,28 +245,12 @@ def delete_complaint(id):
     flash('Жалоба удалена!', 'success')
     return redirect(url_for('moderation'))
 
-@app.route('/complaint/<int:id>/reply', methods=['POST'])
-@login_required
-def add_reply(id):
-    complaint = Complaint.query.get_or_404(id)
-    
-    if complaint.status == 'Решено':
-        flash('❌ Жалоба решена, ответы запрещены!', 'error')
-        return redirect(url_for('view_complaint', id=id))
-    
-    reply_text = request.form.get('reply_text')
-    if reply_text:
-        complaint.moderator_reply = reply_text
-        db.session.commit()
-        flash('✅ Ответ добавлен!', 'success')
-    return redirect(url_for('view_complaint', id=id))
-
-# ========== АДМИН ПАНЕЛЬ (ВЫДАЧА ПРАВ) ==========
+# ========== АДМИН ПАНЕЛЬ (С ЗАЩИТОЙ ВЛАДЕЛЬЦА) ==========
 @app.route('/admin_panel', methods=['GET', 'POST'])
 @admin_required
 def admin_panel():
     users = User.query.all()
-    current_user = User.query.get(session.get('user_id'))
+    current_user_obj = User.query.get(session.get('user_id'))
     
     if request.method == 'POST':
         user_id = request.form.get('user_id')
@@ -255,7 +259,7 @@ def admin_panel():
         
         # ЗАЩИТА: нельзя изменять владельца
         if user and user.is_owner:
-            flash('❌ Нельзя изменять права владельца!', 'error')
+            flash('❌ Нельзя изменить права владельца!', 'error')
             return redirect(url_for('admin_panel'))
         
         # Нельзя изменять самого себя
@@ -273,7 +277,9 @@ def admin_panel():
             db.session.commit()
         return redirect(url_for('admin_panel'))
     
-    return render_template('admin_panel.html', users=users, current_user_id=session.get('user_id'))
+    return render_template('admin_panel.html', users=users, current_user=current_user_obj)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True)
+
+application = app
