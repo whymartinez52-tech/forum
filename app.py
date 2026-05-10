@@ -3,6 +3,13 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from functools import wraps
 
+import os
+# Удаляем старую базу данных при запуске
+db_path = '/tmp/forum.db'
+if os.path.exists(db_path):
+    os.remove(db_path)
+    print("✅ Старая БД удалена!")
+
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-12345'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///forum.db'
