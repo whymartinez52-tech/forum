@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Жалобы</title>
+    <style>
+        body { background: #0f0f13; font-family: 'Segoe UI', sans-serif; color: #e0e0e0; padding: 2rem; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .card { background: #1a1a2e; border-radius: 1.5rem; padding: 2rem; margin-bottom: 1.5rem; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        input, textarea, select { width: 100%; padding: 0.75rem; background: #2a2a3a; border: 1px solid #3a3a4a; border-radius: 0.75rem; color: white; }
+        button { background: #f97316; padding: 0.75rem 1.5rem; border: none; border-radius: 2rem; color: white; cursor: pointer; }
+        .complaint-item { background: #252540; border-radius: 1rem; padding: 1rem; margin-bottom: 1rem; }
+        .status { display: inline-block; padding: 0.2rem 0.8rem; border-radius: 1rem; font-size: 0.8rem; }
+        .status-pending { background: #f97316; }
+        .status-processing { background: #2563eb; }
+        .status-resolved { background: #15803d; }
+        .btn-small { background: #3a3a5a; padding: 0.3rem 0.8rem; font-size: 0.8rem; margin-left: 0.5rem; text-decoration: none; color: white; border-radius: 0.5rem; display: inline-block; }
+        a { color: #f97316; text-decoration: none; }
+        .flash { background: #15803d; padding: 0.75rem; border-radius: 0.75rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>📋 Подать жалобу</h1>
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for msg in messages %}
+                        <div class="flash">{{ msg }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            <form method="POST">
+                <div class="form-group">
+                    <label>Тема *</label>
+                    <input type="text" name="topic" required>
+                </div>
+                <div class="form-group">
+                    <label>Описание *</label>
+                    <textarea name="description" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Доказательства (ссылки, скриншоты)</label>
+                    <input type="text" name="evidence" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                    <label>Приоритет</label>
+                    <select name="priority">
+                        <option>Низкий</option>
+                        <option selected>Средний</option>
+                        <option>Высокий</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Контакт для связи (Discord)</label>
+                    <input type="text" name="contact" placeholder="ник#0000">
+                </div>
+                <button type="submit">Отправить жалобу</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>📋 Список жалоб</h2>
+            {% for c in complaints %}
+            <div class="complaint-item">
+                <strong>📌 {{ c.topic }}</strong>
+                <span class="status 
+                    {% if c.status == 'Ожидание' %}status-pending
+                    {% elif c.status == 'В обработке' %}status-processing
+                    {% elif c.status == 'Решено' %}status-resolved
+                    {% endif %}">
+                    {{ c.status }}
+                </span>
+                <p style="color: #aaa; font-size: 0.8rem; margin-top: 0.3rem;">{{ c.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+                <p>{{ c.description[:100] }}{% if c.description|length > 100 %}...{% endif %}</p>
+                <a href="/complaint/{{ c.id }}" class="btn-small">📖 Подробнее</a>
+            </div>
+            {% else %}
+            <p>Жалоб пока нет.</p>
+            {% endfor %}
+            <a href="/" style="display: inline-block; margin-top: 1rem;">← На главную</a>
+        </div>
+    </div>
+</body>
+</html>
