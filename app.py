@@ -53,12 +53,12 @@ def login_required(f):
 # ========== СОЗДАНИЕ ТАБЛИЦ ==========
 with app.app_context():
     db.create_all()
-    # Создаём админа по умолчанию, если нет пользователей
+    # Создаём владельца (его нельзя лишить прав)
     if User.query.count() == 0:
-        default_admin = User(username='admin', password='admin123', is_admin=True)
-        db.session.add(default_admin)
+        owner = User(username='admin', password='admin123', is_admin=True, is_owner=True)
+        db.session.add(owner)
         db.session.commit()
-        print("✅ Создан администратор по умолчанию: admin / admin123")
+        print("✅ Владелец создан: admin / admin123")
 
 # ========== АВТОРИЗАЦИЯ ==========
 @app.route('/login', methods=['GET', 'POST'])
